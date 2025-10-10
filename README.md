@@ -149,12 +149,12 @@ To understand how pseudo labels were prepared, check out the following [notebook
 ## Cite
 
 ```
-@article{TODO,
-  title={TODO},
-  author={Sydorskyi, Volodymyr and Gonçalves, Fernando},
-  conference={CLEF 2025},
-  pages={TODO},
-  year={2025},
-  publisher={TODO}
+@article{sydorskyi2025tackling,
+  title={Tackling Domain Shift in Bird Audio Classification via Transfer Learning and Semi-Supervised Distillation: A Case Study on BirdCLEF+ 2025},
+  author={Sydorskyi, Volodymyr and Gon{\c{c}}alves, Fernando},
+  journal={CLEF Working Notes},
+  pages={09--12},
+  year={2025}
 }
+
 ```
