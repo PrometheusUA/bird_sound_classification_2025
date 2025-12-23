@@ -12,6 +12,7 @@ from joblib import delayed
 from torchaudio.transforms import Resample
 
 from code_base.utils.main_utils import ProgressParallel, load_json
+from tqdm import tqdm
 
 
 def create_target_path(target_root, source_path, add_class_folder_to_path=True):
@@ -93,6 +94,18 @@ if __name__ == "__main__":
         default=32,
         help="Number of cores for parallel processing",
     )
+    parser.add_argument(
+        "--only_biggest",
+        default=False,
+        action="store_true",
+        help="If set, only process the biggest audio file in `au_path`. Useful when there is no space for all converted files.",
+    )
+    parser.add_argument(
+        "--leave_gb",
+        type=int,
+        default=100,
+        help="Amount of free space to leave on the disk (in GB) after processing, if only_biggest mode is turned on.",
+    )
 
     args = parser.parse_args()
     print(f"Received args: {args}")
@@ -113,16 +126,41 @@ if __name__ == "__main__":
     for el in set([os.path.dirname(el) for el in all_targets]):
         os.makedirs(el, exist_ok=True)
 
-    ProgressParallel(n_jobs=args.n_cores, total=len(all_aus))(
-        delayed(
+    if not args.only_biggest:
+        ProgressParallel(n_jobs=args.n_cores, total=len(all_aus))(
+            delayed(
+                get_load_librosa_save_h5py(
+                    do_normalize=args.do_normalize, 
+                    sr=args.sr, 
+                    use_torchaudio=args.use_torchaudio
+                )
+            )(load_path, save_path)
+            for load_path, save_path in zip(all_aus, all_targets)
+        )
+    else:
+        
+        aus_and_sizes = [(el, os.path.getsize(el)) for el in all_aus]
+        aus_and_sizes = sorted(aus_and_sizes, key=lambda x: x[1], reverse=True)
+        total, idx = 0, 0
+        stat = os.statvfs(args.save_path)
+        free_gb = stat.f_bavail * stat.f_frsize / (1024 ** 3)
+        
+        pbar = tqdm(total=len(aus_and_sizes), desc="Processing files")
+        while free_gb - args.leave_gb > 0 and idx < len(aus_and_sizes):
+            au_path, au_size = aus_and_sizes[idx]
+            target_path = create_target_path(args.save_path, au_path, add_class_folder_to_path=add_class_folder_to_path)
             get_load_librosa_save_h5py(
                 do_normalize=args.do_normalize, 
                 sr=args.sr, 
                 use_torchaudio=args.use_torchaudio
-            )
-        )(load_path, save_path)
-        for load_path, save_path in zip(all_aus, all_targets)
-    )
+            )(au_path, target_path)
+            total += au_size
+            idx += 1
+            stat = os.statvfs(args.save_path)
+            free_gb = stat.f_bavail * stat.f_frsize / (1024 ** 3)
+            pbar.set_description(f"Processed {idx} files, total size {total/(1024**3):.2f} GB, free space left {free_gb:.2f} GB")
+            pbar.update(1)
+        pbar.close()
 
     if add_class_folder_to_path:
         saved_targets = glob(pjoin(args.save_path, "*", "*.hdf5"))

@@ -98,7 +98,10 @@ if __name__ == "__main__":
 
     df = pd.read_csv(args.df_path)
 
-    df["group"] = df[args.group_col].str.lower()
+    # Handle NaN values in group_col before processing
+    df[args.group_col] = df[args.group_col].fillna("unknown")
+    
+    df["group"] = df[args.group_col].astype(str).str.lower()
     df.loc[df["group"].isin(UNKNOWN_GROUPS), "group"] = df.loc[df["group"].isin(UNKNOWN_GROUPS), "filename"]
 
     split = list(stratified_k_fold(X=df, y=df[args.split_col], g=df["group"], k=args.n_folds))

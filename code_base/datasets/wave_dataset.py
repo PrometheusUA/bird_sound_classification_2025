@@ -262,8 +262,25 @@ class WaveDataset(torch.utils.data.Dataset):
 
         self.df["original_name_col"] = self.df[name_col].copy()
 
+        # Support mixed HDF5 and raw audio datasets
         if self.use_h5py:
-            self.df[self.name_col] = self.df[self.name_col].apply(lambda x: splitext(x)[0] + ".hdf5")
+            # Try HDF5 first, fall back to original path (with any replacements already applied)
+            def try_hdf5_or_original(path):
+                hdf5_path = splitext(path)[0] + ".hdf5"
+                if os.path.exists(hdf5_path):
+                    return hdf5_path
+                # If HDF5 doesn't exist, revert the path replacement to use raw audio
+                if replace_pathes is not None:
+                    original_path = path.replace(replace_pathes[1], replace_pathes[0])
+                    if os.path.exists(original_path):
+                        return original_path
+                return path
+            
+            self.df[self.name_col] = self.df[self.name_col].apply(try_hdf5_or_original)
+            
+            # Create a column to track which files are HDF5
+            self.df["is_hdf5"] = self.df[self.name_col].apply(lambda x: x.endswith(".hdf5"))
+            print(f"Dataset composition: {self.df['is_hdf5'].sum()} HDF5 files, {(~self.df['is_hdf5']).sum()} raw audio files")
 
         # Validate that all files exist
         if check_all_files_exist:
@@ -615,7 +632,11 @@ class WaveDataset(torch.utils.data.Dataset):
                 row = self.soundscape_df.iloc[idx]
             else:
                 row = self.df.iloc[idx]
-            if self.use_h5py:
+            
+            # Check if this specific file is HDF5 or raw audio
+            is_file_hdf5 = self.use_h5py and row.get("is_hdf5", True)
+            
+            if is_file_hdf5:
                 with h5py.File(row[self.name_col], "r", swmr=True) as f:
                     # Very messy but let it be
                     if (
@@ -1135,7 +1156,10 @@ class WaveAllFileDataset(WaveDataset):
         start = map_dict["start"]
         end = start + self.segment_len
 
-        if self.use_h5py:
+        # Check if this specific file is HDF5 or raw audio
+        is_file_hdf5 = self.use_h5py and self.df.iloc[dfidx].get("is_hdf5", True)
+        
+        if is_file_hdf5:
             with h5py.File(self.df[self.name_col].iloc[dfidx], "r", swmr=True) as f:
                 if self.hard_slicing:
                     wave = self._prepare_sample_piece_hard(f["au"], start=start, end=map_dict["end"])
